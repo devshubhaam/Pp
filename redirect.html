@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -71,12 +71,12 @@ __META__
     </svg>
   </div>
 
-  <h1 id="title">File khul rahi hai</h1>
-  <p id="step">Link check ho raha hai</p>
+  <h1 id="title">Opening your file</h1>
+  <p id="step">Checking your link</p>
 
   <div class="bar" id="bar"><i id="fill"></i></div>
 
-  <p class="hint" id="hint">Telegram nahi khula?<br><a id="manual" href="__TARGET_ATTR__">Yahan dabao</a></p>
+  <p class="hint" id="hint">Telegram didn't open?<br><a id="manual" href="__TARGET_ATTR__">Tap here</a></p>
 </main>
 
 <script>
@@ -86,10 +86,10 @@ const $ = (id) => document.getElementById(id);
 
 if (!TARGET) {
   document.body.classList.add("err");
-  $("title").textContent = "Link nahi khul paya";
-  $("step").textContent = MSG || "Thodi der baad dobara try karo.";
+  $("title").textContent = "Couldn't open the link";
+  $("step").textContent = MSG || "Please try again in a moment.";
 } else {
-  const steps = ["Link check ho raha hai", "Bot se jud rahe hain", "Telegram khul raha hai"];
+  const steps = ["Checking your link", "Connecting to the bot", "Opening Telegram"];
   const fill = $("fill");
   const step = $("step");
 
