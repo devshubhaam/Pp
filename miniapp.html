@@ -129,7 +129,12 @@ function waitForSdk(name, ms) {
 
 async function startAd(sdkP) {
   const show = await sdkP;
-  if (!show) { fail("The ad didn't load. Turn off AdBlock or Private DNS and try again."); return; }
+  if (!show) {
+    if (!CFG.zone) fail("Ads aren't set up yet (Monetag zone ID is missing on the server).");
+    else if (window.__sdkErr) fail("The ad script was blocked. Turn off AdBlock / Private DNS and try again.");
+    else fail("The ad script loaded but zone " + CFG.zone + " isn't responding. Check the zone ID and SDK URL.");
+    return;
+  }
 
   setStatus("Playing ad…");
   show({ ymid: sid })
@@ -193,7 +198,7 @@ async function begin() {
   if (!tg.initData) { fail("Please open this inside Telegram."); return; }
   setStatus("Getting ready…");
 
-  const sdkP = waitForSdk(CFG.sdkFn, 6000).catch(() => null);   // session start ke saath hi SDK load
+  const sdkP = waitForSdk(CFG.sdkFn, 10000).catch(() => null);   // session start ke saath hi SDK load
   let s;
   try { s = await api("/api/ad/start"); }
   catch (e) { fail("Network error. Please try again."); return; }
