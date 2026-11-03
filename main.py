@@ -104,10 +104,10 @@ def _telegram_target(username: str, token: str) -> str:
 @app.get("/f/{token}")
 async def permanent_link(token: str):
     if not TOKEN_RE.match(token):
-        return _redirect_page(message="Ye link sahi nahi hai.", status=404)
+        return _redirect_page(message="This link doesn't look right.", status=404)
     names = await manager.active_usernames()
     if not names:
-        return _redirect_page(message="Abhi service available nahi hai. Thodi der baad try karo.", status=503)
+        return _redirect_page(message="Service is unavailable right now. Please try again shortly.", status=503)
     return _redirect_page(_telegram_target(random.choice(names), token))
 
 
@@ -162,17 +162,17 @@ if ROLE == "worker":
         return HTMLResponse(_HTML, headers={"Cache-Control": "no-store"})
 
     async def _auth(body: dict):
-        """Purana flow: sid maujood hai (bot ke button se ya retry)."""
+        """Existing session: sid present (from the bot button or a retry)."""
         sid = body.get("sid")
         s = await db.get_session(sid) if isinstance(sid, str) and sid else None
         if not s:
-            return None, None, "Session expire ho gaya. Link dobara kholo."
+            return None, None, "Session expired. Please open the link again."
         application = manager.apps.get(s["bot_id"])
         if not application:
-            return None, None, "Bot abhi available nahi. Thodi der baad try karo."
+            return None, None, "Bot is unavailable right now. Please try again shortly."
         info = validate_init_data(body.get("init_data", ""), application.bot.token)
         if not info or info["user"].get("id") != s["user_id"]:
-            return None, None, "Verification fail. Link dobara kholo."
+            return None, None, "Verification failed. Please open the link again."
         return s, application, None
 
     def _identify(init_data: str):
@@ -194,10 +194,10 @@ if ROLE == "worker":
         else:
             application, info = _identify(body.get("init_data", ""))
             if not application:
-                return {"ok": False, "error": "Link Telegram ke andar se kholo."}
+                return {"ok": False, "error": "Please open this inside Telegram."}
             token = info.get("start_param") or ""
             if not TOKEN_RE.match(token) or not await db.get_file(token):
-                return {"ok": False, "error": "Link invalid hai."}
+                return {"ok": False, "error": "This link is invalid."}
 
             user_id = info["user"]["id"]
             # bot user ko message bhej sakta hai ya nahi (pehle check, ad dikhane se pehle)
@@ -220,7 +220,7 @@ if ROLE == "worker":
             s = await db.get_session(new_sid)
 
         if s["delivered"]:
-            return {"ok": False, "error": "File pehle hi mil chuki hai."}
+            return {"ok": False, "error": "You already received this file."}
         await db.start_ad(s["sid"])
         return {
             "ok": True,
@@ -236,11 +236,11 @@ if ROLE == "worker":
         if err:
             return {"ok": False, "error": err}
         if s["delivered"]:
-            return {"ok": False, "error": "Video pehle hi bheja ja chuka hai."}
+            return {"ok": False, "error": "You already received this file."}
 
         started = s.get("ad_started_at")
         if not started:
-            return {"ok": False, "error": "Ad start nahi hua. Retry dabao."}
+            return {"ok": False, "error": "The ad didn't start. Please try again."}
         elapsed = time.time() - started
         if elapsed < MIN_AD_SECONDS:
             return {"ok": True, "wait": math.ceil(MIN_AD_SECONDS - elapsed)}
@@ -257,13 +257,13 @@ if ROLE == "worker":
             }
 
         if not await db.claim_delivery(s["sid"]):
-            return {"ok": False, "error": "Video pehle hi bheja ja chuka hai."}
+            return {"ok": False, "error": "You already received this file."}
 
         doc = await db.get_file(s2["token"])
         ok = bool(doc) and await send_file(application.bot, s2["chat_id"], doc, manager)
         if not ok:
             await db.unclaim_delivery(s["sid"])
-            return {"ok": False, "error": "File abhi available nahi. Thodi der baad retry karo."}
+            return {"ok": False, "error": "The file is unavailable right now. Please retry shortly."}
         return {
             "ok": True,
             "delivered": True,
