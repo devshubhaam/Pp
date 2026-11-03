@@ -1,9 +1,8 @@
-import asyncio
 import logging
 import secrets
 
-from telegram import Update
-from telegram.error import RetryAfter, TelegramError
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
+from telegram.error import TelegramError
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -13,20 +12,31 @@ from telegram.ext import (
 )
 
 import db
-from config import BACKUP_CHANNEL, BASE_URL, OWNER_ID, PRIMARY_CHANNEL
+from config import (
+    ADS_REQUIRED,
+    BACKUP_CHANNEL,
+    BASE_URL,
+    LINK_BASE_URL,
+    OWNER_ID,
+    PRIMARY_CHANNEL,
+    VERIFY_REQUIRED,
+)
+from delivery import send_file
 
 log = logging.getLogger("handlers")
 
 owner_only = filters.User(user_id=OWNER_ID) & filters.ChatType.PRIVATE
 
 
-# =====================================================================
-# SECONDARY (delivery) BOTS
-# =====================================================================
+# ===================== SECONDARY (delivery) BOTS =====================
 async def deliver_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
+    chat = update.effective_chat
     if not context.args:
         await msg.reply_text("Permanent link kholo, file mil jayegi.")
+        return
+    if chat.type != "private":
+        await msg.reply_text("Ye link bot ke private chat me kholo.")
         return
 
     token = context.args[0]
@@ -36,38 +46,36 @@ async def deliver_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     manager = context.application.bot_data["manager"]
-    caption = doc.get("caption") or ""
 
-    for loc in doc["locations"]:
-        for _attempt in range(2):
-            try:
-                await context.bot.copy_message(
-                    chat_id=msg.chat_id,
-                    from_chat_id=loc["channel"],
-                    message_id=loc["msg"],
-                    caption=caption,
-                )
-                return
-            except RetryAfter as e:
-                await asyncio.sleep(min(e.retry_after, 5))
-            except TelegramError as e:
-                log.warning("copy failed token=%s channel=%s: %s", token, loc["channel"], e)
-                await manager.alert_once(
-                    f"{token}:{loc['channel']}",
-                    f"⚠️ Delivery fail: token {token}, channel {loc['channel']}\n{e}\nBackup se try kiya ja raha hai.",
-                )
-                break  # next location (backup)
+    if not VERIFY_REQUIRED:
+        if not await send_file(context.bot, chat.id, doc, manager):
+            await msg.reply_text("😕 File abhi available nahi hai. Thodi der baad try karo.")
+        return
 
-    await msg.reply_text("😕 File abhi available nahi hai. Thodi der baad try karo.")
+    sid = secrets.token_urlsafe(12)
+    await db.create_session(
+        sid=sid,
+        token=token,
+        user_id=update.effective_user.id,
+        chat_id=chat.id,
+        bot_id=context.application.bot_data["bot_id"],
+        required=ADS_REQUIRED,
+    )
+    kb = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("▶️ Verify & Get Video", web_app=WebAppInfo(url=f"{BASE_URL}/app?sid={sid}"))]]
+    )
+    await msg.reply_text(
+        "🔐 Video pane ke liye neeche button dabao aur ek chhota ad dekho.\n"
+        "Ad ke baad video yahin chat me aa jayega.",
+        reply_markup=kb,
+    )
 
 
 def register_delivery_handlers(app: Application):
     app.add_handler(CommandHandler("start", deliver_start))
 
 
-# =====================================================================
-# MAIN (manager) BOT  -- owner only
-# =====================================================================
+# ===================== MAIN (manager) BOT =====================
 HELP = (
     "🛠 *Main bot*\n\n"
     "File bhejo → upload + backup + permanent link\n\n"
@@ -85,7 +93,7 @@ async def owner_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addbot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
-    try:  # token chat me na dikhe
+    try:
         await msg.delete()
     except TelegramError:
         pass
@@ -115,7 +123,7 @@ async def removebot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not b:
         return
     manager = context.application.bot_data["manager"]
-    await manager.stop_secondary(b["bot_id"], delete_webhook=True)
+    await manager.release_bot(b)
     await db.delete_bot(b["bot_id"])
     await update.effective_message.reply_text(f"🗑 @{b['username']} remove ho gaya.")
 
@@ -126,7 +134,7 @@ async def disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     manager = context.application.bot_data["manager"]
     await db.set_status(b["bot_id"], "disabled")
-    await manager.stop_secondary(b["bot_id"], delete_webhook=True)
+    await manager.release_bot(b)
     await update.effective_message.reply_text(f"⚪ @{b['username']} disabled.")
 
 
@@ -138,7 +146,9 @@ async def enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.set_status(b["bot_id"], "pending")
     await manager.check_all()
     b = await db.get_bot_by_username(b["username"])
-    await update.effective_message.reply_text(f"@{b['username']} → {b['status']}")
+    await update.effective_message.reply_text(
+        f"@{b['username']} → {b['status']}\n(Worker 1-2 min me webhook live kar dega.)"
+    )
 
 
 async def bots_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -153,7 +163,7 @@ async def bots_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
-    token = secrets.token_urlsafe(6)  # ~8 chars
+    token = secrets.token_urlsafe(6)
     original_caption = (msg.caption or "")[:900]
     channel_caption = f"{original_caption}\n\nID: {token}".strip()
 
@@ -181,7 +191,7 @@ async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
         warn = f"\n⚠️ Backup copy fail: {e}"
 
     await db.save_file(token, locations, original_caption)
-    await msg.reply_text(f"✅ Saved\n{BASE_URL}/f/{token}{warn}")
+    await msg.reply_text(f"✅ Saved\n{LINK_BASE_URL}/f/{token}{warn}")
 
 
 def register_main_handlers(app: Application):
