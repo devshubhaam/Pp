@@ -3,61 +3,91 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Verify</title>
+<meta name="color-scheme" content="light dark">
+<title>File</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <!--MONETAG_TAG-->
 <style>
   :root {
-    --bg: var(--tg-theme-bg-color, #ffffff);
-    --fg: var(--tg-theme-text-color, #111111);
-    --hint: var(--tg-theme-hint-color, #777777);
-    --btn: var(--tg-theme-button-color, #2481cc);
-    --btn-fg: var(--tg-theme-button-text-color, #ffffff);
-    --card: var(--tg-theme-secondary-bg-color, #f2f2f2);
-    --ok: #2e9e50;
-    --err: #d64545;
+    --bg: var(--tg-theme-bg-color, #f3f0ea);
+    --ink: var(--tg-theme-text-color, #23211e);
+    --muted: var(--tg-theme-hint-color, #7a746a);
+    --line: rgba(128, 122, 112, .28);
+    --accent: #3f6b5e;
+    --accent-ink: #ffffff;
+    --err: #a8483f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --accent: #86b0a2; --accent-ink: #14201c; --err: #d08a82; }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
-    background: var(--bg); color: var(--fg);
-    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-    display: flex; align-items: center; justify-content: center;
-    padding: env(safe-area-inset-top, 0px) 16px env(safe-area-inset-bottom, 0px);
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: env(safe-area-inset-top, 0px) 24px env(safe-area-inset-bottom, 0px);
   }
-  .card { width: 100%; max-width: 420px; background: var(--card); border-radius: 16px; padding: 24px 20px; text-align: center; }
-  h1 { font-size: 20px; margin: 0 0 8px; }
-  p { margin: 0; color: var(--hint); font-size: 14px; line-height: 1.5; }
-  #status { margin-top: 16px; font-size: 15px; min-height: 22px; color: var(--fg); }
-  #status.ok { color: var(--ok); }
-  #status.err { color: var(--err); }
-  #progress { margin-top: 12px; font-size: 13px; color: var(--hint); }
-  button { margin-top: 18px; border: 0; border-radius: 10px; padding: 12px 22px; background: var(--btn); color: var(--btn-fg); font-size: 15px; cursor: pointer; }
-  button[hidden] { display: none; }
-  .spinner { width: 28px; height: 28px; margin: 0 auto 14px; border-radius: 50%; border: 3px solid var(--hint); border-top-color: var(--btn); animation: spin 0.9s linear infinite; }
-  .spinner.off { display: none; }
+  main { width: 100%; max-width: 300px; text-align: center; }
+
+  .icon { width: 34px; height: 34px; margin: 0 auto 18px; position: relative; }
+  .spinner {
+    width: 100%; height: 100%; border-radius: 50%;
+    border: 2px solid var(--line); border-top-color: var(--accent);
+    animation: spin 1s linear infinite;
+  }
+  .tick { display: none; width: 100%; height: 100%; color: var(--accent); }
+  .icon.done .spinner, .icon.stop .spinner { display: none; }
+  .icon.done .tick { display: block; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  #status { margin: 0; min-height: 22px; font-size: 15px; line-height: 1.5; }
+  #status.err { color: var(--err); }
+  #progress { margin: 6px 0 0; min-height: 18px; font-size: 13px; color: var(--muted); }
+
+  .btn {
+    display: inline-block; margin-top: 20px; padding: 11px 22px;
+    border-radius: 10px; font: inherit; font-size: 15px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink);
+  }
+  .btn.solid { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn[hidden] { display: none; }
+
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 </style>
 </head>
 <body>
-  <div class="card">
-    <div class="spinner" id="spinner"></div>
-    <h1>Video unlock ho raha hai</h1>
-    <p>Ek chhota ad dekho. Ad ke baad video bot ke chat me aa jayega.</p>
-    <div id="status">Ad load ho raha hai…</div>
-    <div id="progress"></div>
-    <button id="retry" hidden>Dobara try karo</button>
+<main>
+  <div class="icon" id="icon">
+    <div class="spinner"></div>
+    <svg class="tick" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="17" cy="17" r="15"/>
+      <path d="M10.5 17.5l4.5 4.5 8.5-9.5"/>
+    </svg>
   </div>
+  <p id="status">Taiyaar ho raha hai…</p>
+  <p id="progress"></p>
+  <button class="btn" id="retry" hidden>Dobara try karo</button>
+  <button class="btn solid" id="openbot" hidden>Bot kholo</button>
+</main>
 
 <script>
 const CFG = __CFG__;
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
+try { tg.setHeaderColor("bg_color"); tg.setBackgroundColor("bg_color"); } catch (e) {}
 
-const sid = new URLSearchParams(location.search).get("sid");
+const qs = new URLSearchParams(location.search);
+let sid = qs.get("sid") || null;                     // purana bot-button flow
+const startParam = (tg.initDataUnsafe && tg.initDataUnsafe.start_param) || "";
 const $ = (id) => document.getElementById(id);
 let rewarded = false;
+let askedWrite = false;
 
 function setStatus(text, cls) {
   const el = $("status");
@@ -65,15 +95,15 @@ function setStatus(text, cls) {
   el.className = cls || "";
 }
 function setProgress(done, required) {
-  $("progress").textContent = required > 1 ? "Ad " + Math.min(done + 1, required) + " / " + required : "";
+  $("progress").textContent = required > 1 ? Math.min(done + 1, required) + " / " + required : "";
 }
-function showRetry(show) {
-  $("retry").hidden = !show;
-  $("spinner").classList.toggle("off", show);
+function setIcon(state) {                              // "" | "stop" | "done"
+  $("icon").className = "icon " + state;
 }
-function adFailed(msg) {
+function fail(msg) {
   setStatus(msg, "err");
-  showRetry(true);
+  setIcon("stop");
+  $("retry").hidden = false;
 }
 
 async function api(path) {
@@ -100,63 +130,83 @@ function waitForSdk(name, ms) {
 async function startAd() {
   let show;
   try { show = await waitForSdk(CFG.sdkFn, 6000); }
-  catch (e) { adFailed("Ad load nahi hua. Adblock ya Private DNS band karke try karo."); return; }
+  catch (e) { fail("Ad load nahi hua. Adblock ya Private DNS band karke try karo."); return; }
 
+  setStatus("Ad chal raha hai…");
   show({ ymid: sid })
     .then((res) => {
-      // Monetag: user beech me band kare to bhi promise resolve hota hai,
-      // isliye reward sirf 'valued' pe
+      // user beech me band kare to bhi promise resolve hota hai, isliye reward sirf 'valued' pe
       if (CFG.requireValued && !(res && res.reward_event_type === "valued")) {
-        adFailed("Video ke liye ad poora dekhna zaroori hai. Dobara try karo.");
+        fail("File ke liye ad poora dekhna zaroori hai.");
         return;
       }
       if (!rewarded) { rewarded = true; claim(); }
     })
-    .catch(() => adFailed("Ad nahi dikh paya. Thodi der baad ya adblock band karke try karo."));
+    .catch(() => fail("Ad nahi dikh paya. Thodi der baad try karo."));
 }
 
 async function claim() {
   setStatus("Verify ho raha hai…");
   let r;
   try { r = await api("/api/ad/done"); }
-  catch (e) { adFailed("Network error. Dobara try karo."); rewarded = false; return; }
+  catch (e) { rewarded = false; fail("Network error. Dobara try karo."); return; }
 
-  if (r.wait) {
-    setStatus("Verify ho raha hai…");
-    setTimeout(claim, r.wait * 1000 + 300);
-    return;
-  }
-  if (!r.ok) { rewarded = false; adFailed(r.error || "Verify fail hua."); return; }
+  if (r.wait) { setTimeout(claim, r.wait * 1000 + 300); return; }
+  if (!r.ok) { rewarded = false; fail(r.error || "Verify fail hua."); return; }
 
   setProgress(r.ads_done, r.ads_required);
   if (r.delivered) {
-    $("spinner").classList.add("off");
-    setStatus("✅ Video bhej diya! Chat me dekho.", "ok");
-    setTimeout(() => tg.close(), 1500);
+    setIcon("done");
+    setStatus("Bhej diya. Chat me dekho.");
+    setTimeout(() => tg.close(), 1400);
   } else {
     rewarded = false;
     begin();
   }
 }
 
-async function begin() {
-  showRetry(false);
-  rewarded = false;
-  if (!sid || !tg.initData) {
-    adFailed("Ye page bot ke andar se kholo.");
-    return;
+// Bot ne abhi tak user ko message karne ki permission nahi li
+function needWrite(bot) {
+  if (!askedWrite && typeof tg.requestWriteAccess === "function") {
+    askedWrite = true;
+    setStatus("Permission ka wait…");
+    tg.requestWriteAccess((ok) => { if (ok) begin(); else showBot(bot); });
+  } else {
+    showBot(bot);
   }
-  setStatus("Ad load ho raha hai…");
+}
+function showBot(bot) {
+  setIcon("stop");
+  setStatus("File bhejne ke liye bot ko start karna hoga.");
+  const b = $("openbot");
+  b.hidden = false;
+  b.onclick = () => {
+    tg.openTelegramLink("https://t.me/" + bot + "?start=" + encodeURIComponent(startParam));
+    tg.close();
+  };
+}
+
+async function begin() {
+  $("retry").hidden = true;
+  $("openbot").hidden = true;
+  setIcon("");
+  rewarded = false;
+  if (!tg.initData) { fail("Ye page Telegram ke andar se kholo."); return; }
+  setStatus("Taiyaar ho raha hai…");
+
   let s;
   try { s = await api("/api/ad/start"); }
-  catch (e) { adFailed("Network error. Dobara try karo."); return; }
-  if (!s.ok) { adFailed(s.error || "Session expire ho gaya."); return; }
+  catch (e) { fail("Network error. Dobara try karo."); return; }
+  if (s.code === "no_write") { needWrite(s.bot); return; }
+  if (!s.ok) { fail(s.error || "Session expire ho gaya."); return; }
+
+  sid = s.sid;
   setProgress(s.ads_done, s.ads_required);
   startAd();
 }
 
 $("retry").addEventListener("click", begin);
-begin();
+begin();   // koi button nahi: mini app khulte hi ad shuru
 </script>
 </body>
 </html>
