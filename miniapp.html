@@ -136,9 +136,22 @@ async function startAd(sdkP) {
     return;
   }
 
+  setStatus("Loading ad…");
+  try {                                   // preload so the ad appears instantly when shown
+    const pre = show({ type: "preload", ymid: sid });
+    if (pre && typeof pre.then === "function") {
+      await Promise.race([pre, new Promise((r) => setTimeout(r, 8000))]);
+    }
+  } catch (e) { /* preload unsupported or no ad yet: try showing directly */ }
+
   setStatus("Playing ad…");
+  const watchdog = setTimeout(() => {
+    if (!rewarded) fail("The ad didn't appear. Please try again, or try later if it keeps happening.");
+  }, 60000);
+
   show({ ymid: sid })
     .then((res) => {
+      clearTimeout(watchdog);
       // the promise also resolves if the user closes the ad early, so only 'valued' counts as a reward
       if (CFG.requireValued && !(res && res.reward_event_type === "valued")) {
         fail("Please watch the full ad to get your file.");
@@ -146,7 +159,11 @@ async function startAd(sdkP) {
       }
       if (!rewarded) { rewarded = true; claim(); }
     })
-    .catch(() => fail("The ad couldn't be shown. Please try again shortly."));
+    .catch((e) => {
+      clearTimeout(watchdog);
+      const why = e && (e.message || e.error_code || e.error || (typeof e === "string" ? e : ""));
+      fail("No ad could be shown right now" + (why ? " (" + String(why).slice(0, 60) + ")" : "") + ". Please try again shortly.");
+    });
 }
 
 async function claim() {
