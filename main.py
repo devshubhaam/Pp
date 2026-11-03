@@ -137,6 +137,7 @@ if ROLE == "worker":
             "sdkFn": f"show_{MONETAG_ZONE_ID}",
             "requireValued": MONETAG_REQUIRE_VALUED,
             "required": ADS_REQUIRED,
+            "zone": MONETAG_ZONE_ID,
         }
     ).replace("</", "<\\/")
 
@@ -144,7 +145,8 @@ if ROLE == "worker":
         _TAG = (
             f'<script src="{html.escape(MONETAG_SDK_URL, quote=True)}" '
             f'data-zone="{html.escape(MONETAG_ZONE_ID, quote=True)}" '
-            f'data-sdk="show_{html.escape(MONETAG_ZONE_ID, quote=True)}"></script>'
+            f'data-sdk="show_{html.escape(MONETAG_ZONE_ID, quote=True)}" '
+            f'onerror="window.__sdkErr=1"></script>'
         )
     else:
         _TAG = ""
