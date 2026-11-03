@@ -35,6 +35,10 @@ CHANNELS = [PRIMARY_CHANNEL, BACKUP_CHANNEL]
 HEALTH_INTERVAL = int(os.getenv("HEALTH_INTERVAL", "300"))
 SYNC_INTERVAL = int(os.getenv("SYNC_INTERVAL", "60"))
 
+# ---- optional buttons on the bot menu ----
+CHANNEL_URL = os.getenv("CHANNEL_URL", "").strip()
+SUPPORT_URL = os.getenv("SUPPORT_URL", "").strip()
+
 # ---- ad verification (worker) ----
 VERIFY_REQUIRED = _bool("VERIFY_REQUIRED", True)
 ADS_REQUIRED = int(os.getenv("ADS_REQUIRED", "1"))
@@ -59,6 +63,6 @@ MONETAG_REQUIRE_VALUED = _bool("MONETAG_REQUIRE_VALUED", True)
 
 if ROLE == "worker" and VERIFY_REQUIRED and not MONETAG_ZONE_ID:
     raise RuntimeError(
-        "VERIFY_REQUIRED=true hai par MONETAG_ZONE_ID set nahi hai. "
-        "Ya to zone ID set karo ya VERIFY_REQUIRED=false karo."
+        "VERIFY_REQUIRED=true but MONETAG_ZONE_ID is not set. "
+        "Set the zone ID or set VERIFY_REQUIRED=false."
     )
