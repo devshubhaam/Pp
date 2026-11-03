@@ -94,7 +94,7 @@ class BotManager:
             await self.main.bot.set_webhook(
                 url=f"{BASE_URL}/webhook/main",
                 secret_token=self.secret_for("main"),
-                allowed_updates=["message"],
+                allowed_updates=["message", "callback_query"],
             )
             self.apps["main"] = self.main
         else:
@@ -119,7 +119,7 @@ class BotManager:
         await app.bot.set_webhook(
             url=f"{BASE_URL}/webhook/{bot_id}",
             secret_token=self.secret_for(bot_id),
-            allowed_updates=["message"],
+            allowed_updates=["message", "callback_query"],
         )
         self.apps[bot_id] = app
         self._running_tokens[bot_id] = b["token_enc"]
@@ -181,9 +181,9 @@ class BotManager:
         await self.stop_secondary(b["bot_id"])
         left = len(await db.list_bots("active"))
         await self.notify_owner(
-            f"🔴 @{b['username']} dead (suspend/delete/token revoked).\n"
-            f"Active bots bache: {left}\n"
-            f"Naya bot add karo: /addbot <token>"
+            f"🔴💀 @{b['username']} is dead (suspended / deleted / token revoked).\n"
+            f"Active bots left: {left}\n"
+            f"Add a new one: /addbot <token>"
         )
 
     async def release_bot(self, b: dict):
@@ -195,13 +195,13 @@ class BotManager:
 
     async def add_bot(self, token: str) -> str:
         if not TOKEN_RE.match(token):
-            return "❌ Token ka format galat hai."
+            return "❌ That token format looks wrong."
         try:
             async with Bot(token) as tmp:
                 me = await tmp.get_me()
                 ok, missing = await self.check_admin(tmp)
         except InvalidToken:
-            return "❌ Token invalid ya revoked hai."
+            return "❌ Token is invalid or revoked."
         except TelegramError as e:
             return f"❌ Telegram error: {e}"
 
@@ -212,13 +212,13 @@ class BotManager:
 
         if ok:
             return (
-                f"✅ @{me.username} save ho gaya.\n"
-                f"Worker {SYNC_INTERVAL}s ke andar ise webhook pe live kar dega."
+                f"✅🎉 @{me.username} saved!\n"
+                f"The worker will take it live within {SYNC_INTERVAL}s."
             )
         return (
-            f"🟡 @{me.username} save ho gaya (pending).\n"
-            f"Isko in channels me admin banao: {', '.join(map(str, missing))}\n"
-            f"Admin banate hi {HEALTH_INTERVAL // 60} min ke andar auto active ho jayega."
+            f"🟡⏳ @{me.username} saved (pending).\n"
+            f"Make it admin in these channels: {', '.join(map(str, missing))}\n"
+            f"It activates automatically within {HEALTH_INTERVAL // 60} min after that."
         )
 
     async def check_all(self):
@@ -232,7 +232,7 @@ class BotManager:
                         ok, _ = await self.check_admin(bot)
                         if ok:
                             await db.set_status(b["bot_id"], "active")
-                            await self.notify_owner(f"🟢 @{b['username']} ab active hai.")
+                            await self.notify_owner(f"🟢🎉 @{b['username']} is now active!")
             except InvalidToken:
                 await self._mark_dead(b)
             except Exception as e:  # noqa: BLE001
