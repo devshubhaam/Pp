@@ -28,7 +28,6 @@ from config import (
     MONETAG_SDK_URL,
     MONETAG_ZONE_ID,
     ROLE,
-    VERIFY_REQUIRED,
 )
 from delivery import send_file
 from manager import BotManager
@@ -94,7 +93,7 @@ def _redirect_page(target: str = "", message: str = "", status: int = 200) -> HT
 
 
 def _telegram_target(username: str, token: str) -> str:
-    if VERIFY_REQUIRED and DIRECT_MINIAPP:
+    if DIRECT_MINIAPP:
         # Direct Mini App link: bina button dabaye app khulta hai, token start_param me jata hai
         if MINIAPP_SHORT_NAME:
             return f"https://t.me/{username}/{MINIAPP_SHORT_NAME}?startapp={token}"
