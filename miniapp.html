@@ -127,10 +127,9 @@ function waitForSdk(name, ms) {
   });
 }
 
-async function startAd() {
-  let show;
-  try { show = await waitForSdk(CFG.sdkFn, 6000); }
-  catch (e) { fail("Ad load nahi hua. Adblock ya Private DNS band karke try karo."); return; }
+async function startAd(sdkP) {
+  const show = await sdkP;
+  if (!show) { fail("Ad load nahi hua. Adblock ya Private DNS band karke try karo."); return; }
 
   setStatus("Ad chal raha hai…");
   show({ ymid: sid })
@@ -194,6 +193,7 @@ async function begin() {
   if (!tg.initData) { fail("Ye page Telegram ke andar se kholo."); return; }
   setStatus("Taiyaar ho raha hai…");
 
+  const sdkP = waitForSdk(CFG.sdkFn, 6000).catch(() => null);   // session start ke saath hi SDK load
   let s;
   try { s = await api("/api/ad/start"); }
   catch (e) { fail("Network error. Dobara try karo."); return; }
@@ -202,11 +202,11 @@ async function begin() {
 
   sid = s.sid;
   setProgress(s.ads_done, s.ads_required);
-  startAd();
+  startAd(sdkP);
 }
 
 $("retry").addEventListener("click", begin);
-begin();   // koi button nahi: mini app khulte hi ad shuru
+begin();   // mini app khulte hi ad shuru, koi extra button nahi
 </script>
 </body>
 </html>
