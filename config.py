@@ -35,17 +35,22 @@ CHANNELS = [PRIMARY_CHANNEL, BACKUP_CHANNEL]
 HEALTH_INTERVAL = int(os.getenv("HEALTH_INTERVAL", "300"))
 SYNC_INTERVAL = int(os.getenv("SYNC_INTERVAL", "60"))
 
+# ---- ad verification (worker) ----
 VERIFY_REQUIRED = _bool("VERIFY_REQUIRED", True)
 ADS_REQUIRED = int(os.getenv("ADS_REQUIRED", "1"))
 MIN_AD_SECONDS = int(os.getenv("MIN_AD_SECONDS", "5"))
 SESSION_TTL = int(os.getenv("SESSION_TTL", "1800"))
 
-TADS_WIDGET_ID = os.getenv("TADS_WIDGET_ID", "")
-TADS_SCRIPT_URL = os.getenv("TADS_SCRIPT_URL", "")
-TADS_DEBUG = _bool("TADS_DEBUG", False)
+# ---- Monetag ----
+# MAIN zone ID (sub-zone nahi), Monetag dashboard -> Get SDK
+MONETAG_ZONE_ID = os.getenv("MONETAG_ZONE_ID", "").strip()
+# Dashboard ke "Get instructions" snippet me jo <script src="..."> hai, wahi daalo
+MONETAG_SDK_URL = os.getenv("MONETAG_SDK_URL", "https://libtl.com/sdk.js").strip()
+# True = reward sirf tab jab Monetag 'valued' bheje (user ne ad poora dekha)
+MONETAG_REQUIRE_VALUED = _bool("MONETAG_REQUIRE_VALUED", True)
 
-if ROLE == "worker" and VERIFY_REQUIRED and not (TADS_WIDGET_ID and TADS_SCRIPT_URL):
+if ROLE == "worker" and VERIFY_REQUIRED and not MONETAG_ZONE_ID:
     raise RuntimeError(
-        "VERIFY_REQUIRED=true hai par TADS_WIDGET_ID / TADS_SCRIPT_URL set nahi hain. "
-        "Ya to dono set karo ya VERIFY_REQUIRED=false karo."
+        "VERIFY_REQUIRED=true hai par MONETAG_ZONE_ID set nahi hai. "
+        "Ya to zone ID set karo ya VERIFY_REQUIRED=false karo."
     )
