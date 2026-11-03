@@ -42,10 +42,11 @@ MIN_AD_SECONDS = int(os.getenv("MIN_AD_SECONDS", "5"))
 SESSION_TTL = int(os.getenv("SESSION_TTL", "1800"))
 
 # ---- direct Mini App launch ----
-# True = permanent link seedha Mini App kholta hai (button dabane ki zaroorat nahi).
+# False (default) = link -> bot -> 'Verify & Get Video' button -> Mini App me turant ad.
+# True = link seedha Mini App kholta hai (button nahi).
 # Iske liye har delivery bot me BotFather -> Bot Settings -> Main Mini App set hona chahiye
 # (URL: BASE_URL/app). Agar short name wala app bana hai (/newapp) to uska short name yahan daalo.
-DIRECT_MINIAPP = _bool("DIRECT_MINIAPP", True)
+DIRECT_MINIAPP = _bool("DIRECT_MINIAPP", False)
 MINIAPP_SHORT_NAME = os.getenv("MINIAPP_SHORT_NAME", "").strip()
 
 # ---- Monetag ----
