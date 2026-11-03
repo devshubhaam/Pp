@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import hmac
+import html
 import json
 import logging
 import math
@@ -19,10 +20,10 @@ import db
 from config import (
     ADS_REQUIRED,
     MIN_AD_SECONDS,
+    MONETAG_REQUIRE_VALUED,
+    MONETAG_SDK_URL,
+    MONETAG_ZONE_ID,
     ROLE,
-    TADS_DEBUG,
-    TADS_SCRIPT_URL,
-    TADS_WIDGET_ID,
 )
 from delivery import send_file
 from manager import BotManager
@@ -99,13 +100,28 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600):
 if ROLE == "worker":
     _CFG = json.dumps(
         {
-            "widgetId": TADS_WIDGET_ID,
-            "scriptUrl": TADS_SCRIPT_URL,
-            "debug": TADS_DEBUG,
+            "sdkFn": f"show_{MONETAG_ZONE_ID}",
+            "requireValued": MONETAG_REQUIRE_VALUED,
             "required": ADS_REQUIRED,
         }
     ).replace("</", "<\\/")
-    _HTML = Path(__file__).with_name("miniapp.html").read_text(encoding="utf-8").replace("__CFG__", _CFG)
+
+    if MONETAG_ZONE_ID:
+        _TAG = (
+            f'<script src="{html.escape(MONETAG_SDK_URL, quote=True)}" '
+            f'data-zone="{html.escape(MONETAG_ZONE_ID, quote=True)}" '
+            f'data-sdk="show_{html.escape(MONETAG_ZONE_ID, quote=True)}"></script>'
+        )
+    else:
+        _TAG = ""
+
+    _HTML = (
+        Path(__file__)
+        .with_name("miniapp.html")
+        .read_text(encoding="utf-8")
+        .replace("__CFG__", _CFG)
+        .replace("<!--MONETAG_TAG-->", _TAG)
+    )
 
     @app.get("/app", response_class=HTMLResponse)
     async def miniapp():
