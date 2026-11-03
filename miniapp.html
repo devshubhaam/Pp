@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -69,10 +69,10 @@
       <path d="M10.5 17.5l4.5 4.5 8.5-9.5"/>
     </svg>
   </div>
-  <p id="status">Taiyaar ho raha hai…</p>
+  <p id="status">Getting ready…</p>
   <p id="progress"></p>
-  <button class="btn" id="retry" hidden>Dobara try karo</button>
-  <button class="btn solid" id="openbot" hidden>Bot kholo</button>
+  <button class="btn" id="retry" hidden>Try again</button>
+  <button class="btn solid" id="openbot" hidden>Open bot</button>
 </main>
 
 <script>
@@ -129,34 +129,34 @@ function waitForSdk(name, ms) {
 
 async function startAd(sdkP) {
   const show = await sdkP;
-  if (!show) { fail("Ad load nahi hua. Adblock ya Private DNS band karke try karo."); return; }
+  if (!show) { fail("The ad didn't load. Turn off AdBlock or Private DNS and try again."); return; }
 
-  setStatus("Ad chal raha hai…");
+  setStatus("Playing ad…");
   show({ ymid: sid })
     .then((res) => {
-      // user beech me band kare to bhi promise resolve hota hai, isliye reward sirf 'valued' pe
+      // the promise also resolves if the user closes the ad early, so only 'valued' counts as a reward
       if (CFG.requireValued && !(res && res.reward_event_type === "valued")) {
-        fail("File ke liye ad poora dekhna zaroori hai.");
+        fail("Please watch the full ad to get your file.");
         return;
       }
       if (!rewarded) { rewarded = true; claim(); }
     })
-    .catch(() => fail("Ad nahi dikh paya. Thodi der baad try karo."));
+    .catch(() => fail("The ad couldn't be shown. Please try again shortly."));
 }
 
 async function claim() {
-  setStatus("Verify ho raha hai…");
+  setStatus("Verifying…");
   let r;
   try { r = await api("/api/ad/done"); }
-  catch (e) { rewarded = false; fail("Network error. Dobara try karo."); return; }
+  catch (e) { rewarded = false; fail("Network error. Please try again."); return; }
 
   if (r.wait) { setTimeout(claim, r.wait * 1000 + 300); return; }
-  if (!r.ok) { rewarded = false; fail(r.error || "Verify fail hua."); return; }
+  if (!r.ok) { rewarded = false; fail(r.error || "Verification failed."); return; }
 
   setProgress(r.ads_done, r.ads_required);
   if (r.delivered) {
     setIcon("done");
-    setStatus("Bhej diya. Chat me dekho.");
+    setStatus("Sent! Check your chat.");
     setTimeout(() => tg.close(), 1400);
   } else {
     rewarded = false;
@@ -164,11 +164,11 @@ async function claim() {
   }
 }
 
-// Bot ne abhi tak user ko message karne ki permission nahi li
+// The bot isn't allowed to message this user yet
 function needWrite(bot) {
   if (!askedWrite && typeof tg.requestWriteAccess === "function") {
     askedWrite = true;
-    setStatus("Permission ka wait…");
+    setStatus("Waiting for permission…");
     tg.requestWriteAccess((ok) => { if (ok) begin(); else showBot(bot); });
   } else {
     showBot(bot);
@@ -176,7 +176,7 @@ function needWrite(bot) {
 }
 function showBot(bot) {
   setIcon("stop");
-  setStatus("File bhejne ke liye bot ko start karna hoga.");
+  setStatus("Start the bot first to receive your file.");
   const b = $("openbot");
   b.hidden = false;
   b.onclick = () => {
@@ -190,15 +190,15 @@ async function begin() {
   $("openbot").hidden = true;
   setIcon("");
   rewarded = false;
-  if (!tg.initData) { fail("Ye page Telegram ke andar se kholo."); return; }
-  setStatus("Taiyaar ho raha hai…");
+  if (!tg.initData) { fail("Please open this inside Telegram."); return; }
+  setStatus("Getting ready…");
 
   const sdkP = waitForSdk(CFG.sdkFn, 6000).catch(() => null);   // session start ke saath hi SDK load
   let s;
   try { s = await api("/api/ad/start"); }
-  catch (e) { fail("Network error. Dobara try karo."); return; }
+  catch (e) { fail("Network error. Please try again."); return; }
   if (s.code === "no_write") { needWrite(s.bot); return; }
-  if (!s.ok) { fail(s.error || "Session expire ho gaya."); return; }
+  if (!s.ok) { fail(s.error || "Session expired."); return; }
 
   sid = s.sid;
   setProgress(s.ads_done, s.ads_required);
@@ -206,7 +206,7 @@ async function begin() {
 }
 
 $("retry").addEventListener("click", begin);
-begin();   // mini app khulte hi ad shuru, koi extra button nahi
+begin();   // the ad starts as soon as the mini app opens, no extra button
 </script>
 </body>
 </html>
