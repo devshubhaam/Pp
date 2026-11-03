@@ -7,23 +7,28 @@ import logging
 import math
 import random
 import re
+import secrets
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import parse_qsl
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from telegram import Update
+from telegram.error import Forbidden, TelegramError
 
 import db
 from config import (
     ADS_REQUIRED,
+    DIRECT_MINIAPP,
+    MINIAPP_SHORT_NAME,
     MIN_AD_SECONDS,
     MONETAG_REQUIRE_VALUED,
     MONETAG_SDK_URL,
     MONETAG_ZONE_ID,
     ROLE,
+    VERIFY_REQUIRED,
 )
 from delivery import send_file
 from manager import BotManager
@@ -68,18 +73,48 @@ async def webhook(
     return {"ok": True}
 
 
+_REDIRECT_TPL = Path(__file__).with_name("redirect.html").read_text(encoding="utf-8")
+
+
+def _redirect_page(target: str = "", message: str = "", status: int = 200) -> HTMLResponse:
+    page = (
+        _REDIRECT_TPL.replace(
+            "__META__",
+            f'<meta http-equiv="refresh" content="8;url={html.escape(target, quote=True)}">' if target else "",
+        )
+        .replace("__TARGET_ATTR__", html.escape(target, quote=True))
+        .replace("__TARGET_JSON__", json.dumps(target).replace("</", "<\\/"))
+        .replace("__MSG_JSON__", json.dumps(message).replace("</", "<\\/"))
+    )
+    return HTMLResponse(
+        page,
+        status_code=status,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+def _telegram_target(username: str, token: str) -> str:
+    if VERIFY_REQUIRED and DIRECT_MINIAPP:
+        # Direct Mini App link: bina button dabaye app khulta hai, token start_param me jata hai
+        if MINIAPP_SHORT_NAME:
+            return f"https://t.me/{username}/{MINIAPP_SHORT_NAME}?startapp={token}"
+        return f"https://t.me/{username}?startapp={token}"
+    return f"https://t.me/{username}?start={token}"
+
+
 @app.get("/f/{token}")
 async def permanent_link(token: str):
     if not TOKEN_RE.match(token):
-        raise HTTPException(status_code=404)
+        return _redirect_page(message="Ye link sahi nahi hai.", status=404)
     names = await manager.active_usernames()
     if not names:
-        raise HTTPException(status_code=503, detail="No active bot right now")
-    return RedirectResponse(f"https://t.me/{random.choice(names)}?start={token}", status_code=302)
+        return _redirect_page(message="Abhi service available nahi hai. Thodi der baad try karo.", status=503)
+    return _redirect_page(_telegram_target(random.choice(names), token))
 
 
 # ===================== WORKER only: Mini App =====================
 def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600):
+    """Signature sahi ho to {"user": {...}, "start_param": str|None} warna None."""
     try:
         parsed = dict(parse_qsl(init_data or "", keep_blank_values=True))
         received = parsed.pop("hash", None)
@@ -92,7 +127,7 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600):
             return None
         if time.time() - int(parsed.get("auth_date", "0")) > max_age:
             return None
-        return json.loads(parsed["user"])
+        return {"user": json.loads(parsed["user"]), "start_param": parsed.get("start_param")}
     except Exception:  # noqa: BLE001
         return None
 
@@ -128,28 +163,72 @@ if ROLE == "worker":
         return HTMLResponse(_HTML, headers={"Cache-Control": "no-store"})
 
     async def _auth(body: dict):
+        """Purana flow: sid maujood hai (bot ke button se ya retry)."""
         sid = body.get("sid")
-        s = await db.get_session(sid) if isinstance(sid, str) else None
+        s = await db.get_session(sid) if isinstance(sid, str) and sid else None
         if not s:
             return None, None, "Session expire ho gaya. Link dobara kholo."
         application = manager.apps.get(s["bot_id"])
         if not application:
             return None, None, "Bot abhi available nahi. Thodi der baad try karo."
-        user = validate_init_data(body.get("init_data", ""), application.bot.token)
-        if not user or user.get("id") != s["user_id"]:
-            return None, None, "Verification fail. Bot ke andar se button dabao."
+        info = validate_init_data(body.get("init_data", ""), application.bot.token)
+        if not info or info["user"].get("id") != s["user_id"]:
+            return None, None, "Verification fail. Link dobara kholo."
         return s, application, None
+
+    def _identify(init_data: str):
+        """Direct launch: kaunse bot ne Mini App kholi, ye initData ke signature se pata chalta hai."""
+        for application in list(manager.apps.values()):
+            info = validate_init_data(init_data, application.bot.token)
+            if info:
+                return application, info
+        return None, None
 
     @app.post("/api/ad/start")
     async def ad_start(request: Request):
         body = await request.json()
-        s, _application, err = await _auth(body)
-        if err:
-            return {"ok": False, "error": err}
+
+        if isinstance(body.get("sid"), str) and body["sid"]:
+            s, _application, err = await _auth(body)
+            if err:
+                return {"ok": False, "error": err}
+        else:
+            application, info = _identify(body.get("init_data", ""))
+            if not application:
+                return {"ok": False, "error": "Link Telegram ke andar se kholo."}
+            token = info.get("start_param") or ""
+            if not TOKEN_RE.match(token) or not await db.get_file(token):
+                return {"ok": False, "error": "Link invalid hai."}
+
+            user_id = info["user"]["id"]
+            # bot user ko message bhej sakta hai ya nahi (pehle check, ad dikhane se pehle)
+            try:
+                await application.bot.send_chat_action(user_id, "upload_document")
+            except Forbidden:
+                return {"ok": False, "code": "no_write", "bot": application.bot.username}
+            except TelegramError:
+                pass
+
+            new_sid = secrets.token_urlsafe(12)
+            await db.create_session(
+                sid=new_sid,
+                token=token,
+                user_id=user_id,
+                chat_id=user_id,
+                bot_id=application.bot_data["bot_id"],
+                required=ADS_REQUIRED,
+            )
+            s = await db.get_session(new_sid)
+
         if s["delivered"]:
-            return {"ok": False, "error": "Video pehle hi mil chuka hai."}
+            return {"ok": False, "error": "File pehle hi mil chuki hai."}
         await db.start_ad(s["sid"])
-        return {"ok": True, "ads_done": s["ads_done"], "ads_required": s["ads_required"]}
+        return {
+            "ok": True,
+            "sid": s["sid"],
+            "ads_done": s["ads_done"],
+            "ads_required": s["ads_required"],
+        }
 
     @app.post("/api/ad/done")
     async def ad_done(request: Request):
