@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verify</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --fg: var(--tg-theme-text-color, #111111);
+    --hint: var(--tg-theme-hint-color, #777777);
+    --btn: var(--tg-theme-button-color, #2481cc);
+    --btn-fg: var(--tg-theme-button-text-color, #ffffff);
+    --card: var(--tg-theme-secondary-bg-color, #f2f2f2);
+    --ok: #2e9e50;
+    --err: #d64545;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: env(safe-area-inset-top, 0px) 16px env(safe-area-inset-bottom, 0px);
+  }
+  .card { width: 100%; max-width: 420px; background: var(--card); border-radius: 16px; padding: 24px 20px; text-align: center; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { margin: 0; color: var(--hint); font-size: 14px; line-height: 1.5; }
+  #status { margin-top: 16px; font-size: 15px; min-height: 22px; color: var(--fg); }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--err); }
+  #progress { margin-top: 12px; font-size: 13px; color: var(--hint); }
+  button { margin-top: 18px; border: 0; border-radius: 10px; padding: 12px 22px; background: var(--btn); color: var(--btn-fg); font-size: 15px; cursor: pointer; }
+  button[hidden] { display: none; }
+  .spinner { width: 28px; height: 28px; margin: 0 auto 14px; border-radius: 50%; border: 3px solid var(--hint); border-top-color: var(--btn); animation: spin 0.9s linear infinite; }
+  .spinner.off { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner" id="spinner"></div>
+    <h1>Video unlock ho raha hai</h1>
+    <p>Ek chhota ad dekho. Ad ke baad video bot ke chat me aa jayega.</p>
+    <div id="status">Ad load ho raha hai…</div>
+    <div id="progress"></div>
+    <button id="retry" hidden>Dobara try karo</button>
+    <div id="tads-container"></div>
+  </div>
+
+<script>
+const CFG = __CFG__;
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+const sid = new URLSearchParams(location.search).get("sid");
+const $ = (id) => document.getElementById(id);
+let rewarded = false;
+
+function setStatus(text, cls) {
+  const el = $("status");
+  el.textContent = text;
+  el.className = cls || "";
+}
+function setProgress(done, required) {
+  $("progress").textContent = required > 1 ? "Ad " + Math.min(done + 1, required) + " / " + required : "";
+}
+function showRetry(show) {
+  $("retry").hidden = !show;
+  $("spinner").classList.toggle("off", show);
+}
+
+async function api(path) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sid: sid, init_data: tg.initData }),
+  });
+  return r.json();
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector('script[data-tads]')) return resolve();
+    const s = document.createElement("script");
+    s.src = src; s.async = true; s.dataset.tads = "1";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("script blocked"));
+    document.head.appendChild(s);
+  });
+}
+
+function adFailed(msg) {
+  setStatus(msg, "err");
+  showRetry(true);
+}
+
+// Agar stream player.html me TADS init alag hai, wahi snippet yahan paste karo.
+function startAd() {
+  const ctl = window.tads.init({
+    widgetId: CFG.widgetId,
+    type: "fullscreen",
+    debug: CFG.debug,
+    onShowReward: () => { if (!rewarded) { rewarded = true; claim(); } },
+    onClickReward: () => { if (!rewarded) { rewarded = true; claim(); } },
+    onAdsNotFound: () => adFailed("Abhi koi ad available nahi. Thodi der baad try karo."),
+  });
+  Promise.resolve(ctl && ctl.loadAd ? ctl.loadAd() : null)
+    .then(() => ctl.showAd())
+    .catch(() => adFailed("Ad nahi dikh paya. Adblock ya Private DNS band karke try karo."));
+}
+
+async function claim() {
+  setStatus("Verify ho raha hai…");
+  let r;
+  try { r = await api("/api/ad/done"); }
+  catch (e) { adFailed("Network error. Dobara try karo."); rewarded = false; return; }
+
+  if (r.wait) {
+    setStatus("Ad dekhte raho…");
+    setTimeout(claim, r.wait * 1000 + 300);
+    return;
+  }
+  if (!r.ok) { rewarded = false; adFailed(r.error || "Verify fail hua."); return; }
+
+  setProgress(r.ads_done, r.ads_required);
+  if (r.delivered) {
+    $("spinner").classList.add("off");
+    setStatus("✅ Video bhej diya! Chat me dekho.", "ok");
+    setTimeout(() => tg.close(), 1500);
+  } else {
+    rewarded = false;
+    begin();
+  }
+}
+
+async function begin() {
+  showRetry(false);
+  rewarded = false;
+  if (!sid || !tg.initData) {
+    adFailed("Ye page bot ke andar se kholo.");
+    return;
+  }
+  setStatus("Ad load ho raha hai…");
+  let s;
+  try { s = await api("/api/ad/start"); }
+  catch (e) { adFailed("Network error. Dobara try karo."); return; }
+  if (!s.ok) { adFailed(s.error || "Session expire ho gaya."); return; }
+  setProgress(s.ads_done, s.ads_required);
+
+  try {
+    await loadScript(CFG.scriptUrl);
+    startAd();
+  } catch (e) {
+    adFailed("Ad load nahi hua. Adblock ya Private DNS band karke try karo.");
+  }
+}
+
+$("retry").addEventListener("click", begin);
+begin();
+</script>
+</body>
+</html>
