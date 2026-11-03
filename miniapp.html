@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Verify</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!--MONETAG_TAG-->
 <style>
   :root {
     --bg: var(--tg-theme-bg-color, #ffffff);
@@ -46,7 +47,6 @@
     <div id="status">Ad load ho raha hai…</div>
     <div id="progress"></div>
     <button id="retry" hidden>Dobara try karo</button>
-    <div id="tads-container"></div>
   </div>
 
 <script>
@@ -71,6 +71,10 @@ function showRetry(show) {
   $("retry").hidden = !show;
   $("spinner").classList.toggle("off", show);
 }
+function adFailed(msg) {
+  setStatus(msg, "err");
+  showRetry(true);
+}
 
 async function api(path) {
   const r = await fetch(path, {
@@ -81,35 +85,34 @@ async function api(path) {
   return r.json();
 }
 
-function loadScript(src) {
+// Monetag SDK ka global function (show_<zoneId>) aane tak wait
+function waitForSdk(name, ms) {
   return new Promise((resolve, reject) => {
-    if (document.querySelector('script[data-tads]')) return resolve();
-    const s = document.createElement("script");
-    s.src = src; s.async = true; s.dataset.tads = "1";
-    s.onload = resolve;
-    s.onerror = () => reject(new Error("script blocked"));
-    document.head.appendChild(s);
+    const t0 = Date.now();
+    (function check() {
+      if (typeof window[name] === "function") return resolve(window[name]);
+      if (Date.now() - t0 > ms) return reject(new Error("sdk missing"));
+      setTimeout(check, 100);
+    })();
   });
 }
 
-function adFailed(msg) {
-  setStatus(msg, "err");
-  showRetry(true);
-}
+async function startAd() {
+  let show;
+  try { show = await waitForSdk(CFG.sdkFn, 6000); }
+  catch (e) { adFailed("Ad load nahi hua. Adblock ya Private DNS band karke try karo."); return; }
 
-// Agar stream player.html me TADS init alag hai, wahi snippet yahan paste karo.
-function startAd() {
-  const ctl = window.tads.init({
-    widgetId: CFG.widgetId,
-    type: "fullscreen",
-    debug: CFG.debug,
-    onShowReward: () => { if (!rewarded) { rewarded = true; claim(); } },
-    onClickReward: () => { if (!rewarded) { rewarded = true; claim(); } },
-    onAdsNotFound: () => adFailed("Abhi koi ad available nahi. Thodi der baad try karo."),
-  });
-  Promise.resolve(ctl && ctl.loadAd ? ctl.loadAd() : null)
-    .then(() => ctl.showAd())
-    .catch(() => adFailed("Ad nahi dikh paya. Adblock ya Private DNS band karke try karo."));
+  show({ ymid: sid })
+    .then((res) => {
+      // Monetag: user beech me band kare to bhi promise resolve hota hai,
+      // isliye reward sirf 'valued' pe
+      if (CFG.requireValued && !(res && res.reward_event_type === "valued")) {
+        adFailed("Video ke liye ad poora dekhna zaroori hai. Dobara try karo.");
+        return;
+      }
+      if (!rewarded) { rewarded = true; claim(); }
+    })
+    .catch(() => adFailed("Ad nahi dikh paya. Thodi der baad ya adblock band karke try karo."));
 }
 
 async function claim() {
@@ -119,7 +122,7 @@ async function claim() {
   catch (e) { adFailed("Network error. Dobara try karo."); rewarded = false; return; }
 
   if (r.wait) {
-    setStatus("Ad dekhte raho…");
+    setStatus("Verify ho raha hai…");
     setTimeout(claim, r.wait * 1000 + 300);
     return;
   }
@@ -149,13 +152,7 @@ async function begin() {
   catch (e) { adFailed("Network error. Dobara try karo."); return; }
   if (!s.ok) { adFailed(s.error || "Session expire ho gaya."); return; }
   setProgress(s.ads_done, s.ads_required);
-
-  try {
-    await loadScript(CFG.scriptUrl);
-    startAd();
-  } catch (e) {
-    adFailed("Ad load nahi hua. Adblock ya Private DNS band karke try karo.");
-  }
+  startAd();
 }
 
 $("retry").addEventListener("click", begin);
